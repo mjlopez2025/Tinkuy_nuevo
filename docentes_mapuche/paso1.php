@@ -16,7 +16,7 @@ try {
     // Lista de tablas en orden para borrar primero dependientes y al final personas_mapuche
     $tables = [
         "unidad_acad_mapuche",
-        "norma_mapuche",
+        "norma_mapuche", 
         "licencias_mapuche",
         "dedicacion_mapuche",
         "categoria_mapuche",
@@ -25,27 +25,30 @@ try {
         "personas_mapuche"
     ];
 
-    echo "🗑️ Borrando tablas si existen...\n";
+    echo "🗑️ Eliminando tablas existentes (en cascada)...\n";
     foreach ($tables as $tbl) {
-        $dropSQL = "DROP TABLE IF EXISTS {$tbl} CASCADE;";
-        $conn_tkn->exec($dropSQL);
-        echo "   - Tabla {$tbl} eliminada (si existía)\n";
+        try {
+            $dropSQL = "DROP TABLE IF EXISTS {$tbl} CASCADE;";
+            $conn_tkn->exec($dropSQL);
+            echo "   - Tabla {$tbl} eliminada (si existía)\n";
+        } catch (PDOException $e) {
+            echo "   ⚠️  Advertencia al eliminar {$tbl}: " . $e->getMessage() . "\n";
+        }
     }
 
     echo "\n⚙️ Creando tablas...\n";
 
     $createSQL = [
-
-        // personas_mapuche
+        // personas_mapuche (tabla principal)
         "CREATE TABLE personas_mapuche (
             id_persona BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             apellido_nombre TEXT NOT NULL,
             tipo_documento TEXT,
             nro_documento BIGINT,
             nro_legajo BIGINT,
-            nro_cuil BIGINT,
-            telefono TEXT,
-            email TEXT,
+            nro_cuil VARCHAR(20),
+            telefono_celular TEXT,
+            correo_electronico TEXT,
             fecha_alta DATE,
             fecha_baja DATE
         );",
@@ -55,7 +58,7 @@ try {
             id_uacad BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             cod_auacad TEXT,
             desc_uacad TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // norma_mapuche
@@ -65,7 +68,7 @@ try {
             tipo_emite TEXT,
             fecha_norma DATE,
             nro_norma TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // licencias_mapuche
@@ -74,7 +77,7 @@ try {
             desc_licen TEXT,
             fecha_desde DATE,
             fecha_hasta DATE,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // dedicacion_mapuche
@@ -82,7 +85,7 @@ try {
             id_dedicacion BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             cod_dedicacion TEXT,
             desc_dedicacion TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // categoria_mapuche
@@ -90,7 +93,7 @@ try {
             id_categ BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             cod_categ TEXT,
             desc_categ TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // cargo_mapuche
@@ -98,7 +101,7 @@ try {
             id_cargo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             nro_cargo BIGINT,
             desc_cargo TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );",
 
         // caracter_mapuche
@@ -106,34 +109,44 @@ try {
             id_caracter BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             cod_caracter TEXT,
             desc_caracter TEXT,
-            id_persona BIGINT REFERENCES personas_mapuche(id_persona)
+            id_persona BIGINT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
         );"
     ];
 
-    foreach ($createSQL as $sql) {
-        $conn_tkn->exec($sql);
+    foreach ($createSQL as $index => $sql) {
+        try {
+            $conn_tkn->exec($sql);
+            $tableName = $tables[$index] ?? "Tabla $index";
+            echo "   - {$tableName} creada exitosamente\n";
+        } catch (PDOException $e) {
+            throw new Exception("Error creando tabla: " . $e->getMessage());
+        }
     }
 
     // Confirmar todo
     $conn_tkn->commit();
 
-    echo "✅ Todas las tablas creadas exitosamente\n\n";
+    echo "\n✅ Todas las tablas creadas exitosamente\n\n";
 
     // Verificación final
-    $tablesNow = $conn_tkn->query("
+    $stmt = $conn_tkn->query("
         SELECT table_name
         FROM information_schema.tables
         WHERE table_schema = 'public'
         ORDER BY table_name
-    ")->fetchAll(PDO::FETCH_COLUMN);
-
+    ");
+    
+    $tablesNow = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
     echo "📋 Tablas actuales en la base:\n";
     foreach ($tablesNow as $t) {
         echo "   - $t\n";
     }
 
-} catch (PDOException $e) {
-    if ($conn_tkn->inTransaction()) {
+    echo "\n🎉 Proceso completado exitosamente!\n";
+
+} catch (Exception $e) {
+    if (isset($conn_tkn) && $conn_tkn->inTransaction()) {
         $conn_tkn->rollBack();
     }
     die("\n❌ Error: " . $e->getMessage() . "\n");

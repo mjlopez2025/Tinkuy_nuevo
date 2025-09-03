@@ -1,97 +1,108 @@
 <?php
 include ("../config.php");
 
-
 echo "=============================================\n";
-echo "SCRIPT PARA CREAR TABLA DOCENTES_GUARANI PARTICIONADA\n";
+echo "SCRIPT PARA CREAR TABLAS GUARANI\n";
 echo "=============================================\n";
 echo "\nIniciando procesamiento....\n";
 
+$dsn = "pgsql:host={$config_tinkuy_nuevo['host']};port={$config_tinkuy_nuevo['port']};dbname={$config_tinkuy_nuevo['dbname']}";
+
 try {
-    
-    
-    echo "✅ Conexión exitosa a PostgreSQL\n";
-    echo "Servidor: {$config_tinkuy['host']}:{$config_tinkuy['port']}\n";
-    echo "Base de datos: {$config_tinkuy['dbname']}\n\n";
+    $conn_tkn = new PDO($dsn, $config_tinkuy_nuevo['user'], $config_tinkuy_nuevo['password']);
+    $conn_tkn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Eliminar tabla existente si es necesario
-    $conn->exec("DROP TABLE IF EXISTS docentes_guarani CASCADE;");
-    echo "✅ Tabla existente eliminada (si existía)\n";
+    echo "✅ Conexión exitosa a PostgreSQL\n\n";
 
-    echo "=============================================================\n";
-    echo "Paso 1. Creando tabla particionada Docentes_Guarani...\n";
-    echo "=============================================================\n";
-    
-    // 1. Crear tabla principal particionada con anio después de comision_guarani
-    $createTableSQL = "CREATE TABLE docentes_guarani (
-    id SERIAL,
-    responsabilidad_academica_guarani VARCHAR(500),
-    propuesta_formativa_guarani VARCHAR(500),
-    comision_guarani VARCHAR(500),
-    anio_guarani INTEGER NOT NULL,
-    periodo_guarani VARCHAR(500),
-    docente_guarani VARCHAR(500),
-    tipo_doc_guarani VARCHAR(100),
-    num_doc_guarani VARCHAR(500),
-    actividad_guarani VARCHAR(500),
-    cursados_guarani VARCHAR(500),
-    ape_nom1_Guarani VARCHAR(500),
-    tipo_doc1_Guarani VARCHAR(500),
-    num_doc1_Guarani VARCHAR(50),
-    ape_nom2_Guarani VARCHAR(500),
-    tipo_doc2_Guarani VARCHAR(500),
-    num_doc2_Guarani VARCHAR(500),
-    ape_nom3_Guarani VARCHAR(500),
-    tipo_doc3_Guarani VARCHAR(500),
-    num_doc3_Guarani VARCHAR(500),
-    ape_nom4_Guarani VARCHAR(500),
-    tipo_doc4_Guarani VARCHAR(500),
-    num_doc4_Guarani VARCHAR(500),
-    PRIMARY KEY (id, anio_guarani)
-) PARTITION BY RANGE (anio_guarani);";
+    // Iniciar transacción
+    $conn_tkn->beginTransaction();
 
+    // Tablas a eliminar primero (hijas primero)
+    $tables = [
+        "estudiantes_guarani",
+        "elementos_guarani",
+        "periodos_guarani",
+        "anios_guarani",
+        "comisiones_guarani",
+        "propuestas_guarani"
+    ];
 
-    $conn->exec($createTableSQL);
-    echo "✅ Tabla principal Docentes_Guarani creada exitosamente.\n";
-
-    // 2. Crear particiones para cada año desde 2011 hasta 2040
-    echo "\nCreando particiones por año...\n";
-    
-    for ($year = 2011; $year <= 2040; $year++) {
-        $nextYear = $year + 1;
-        $partitionName = "docentes_guarani_y{$year}";
-        
-        $partitionSQL = "CREATE TABLE {$partitionName} 
-            PARTITION OF docentes_guarani 
-            FOR VALUES FROM ({$year}) TO ({$nextYear});";
-        
-        try {
-            $conn->exec($partitionSQL);
-            echo "✅ Partición para año {$year} creada exitosamente.\n";
-        } catch (PDOException $e) {
-            echo "⚠️ Error al crear partición para año {$year}: " . $e->getMessage() . "\n";
-        }
+    echo "🗑️ Eliminando tablas existentes (en cascada)...\n";
+    foreach ($tables as $tbl) {
+        $dropSQL = "DROP TABLE IF EXISTS {$tbl} CASCADE;";
+        $conn_tkn->exec($dropSQL);
+        echo "   - Tabla {$tbl} eliminada (si existía)\n";
     }
 
-    // Verificación final
-    echo "\n🔍 Verificación final:\n";
-    $tables = $conn->query("
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name LIKE 'docentes_guarani%'
-        ORDER BY table_name
-    ")->fetchAll(PDO::FETCH_COLUMN);
-    
-    echo "Tablas de particiones existentes:\n";
-    print_r($tables);
+    // Validar que personas_mapuche exista
+    $checkSQL = "SELECT to_regclass('public.personas_mapuche') as existe;";
+    $exists = $conn_tkn->query($checkSQL)->fetch(PDO::FETCH_ASSOC);
+    if (!$exists['existe']) {
+        throw new Exception("❌ La tabla personas_mapuche no existe en esta base de datos.");
+    }
 
-} catch (PDOException $e) {
+    echo "\n⚙️ Creando tablas...\n";
+
+    $createSQL = [
+        "CREATE TABLE propuestas_guarani (
+            id_propuesta INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            cod_prop VARCHAR(20),
+            nombre_prop VARCHAR(100),
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );",
+
+        "CREATE TABLE comisiones_guarani (
+            id_comision INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            nombre VARCHAR(100),
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );",
+
+        "CREATE TABLE anios_guarani (
+            id_anio INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            anio_academico INT,
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );",
+
+        "CREATE TABLE periodos_guarani (
+            id_periodo INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            nombre VARCHAR(100),
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );",
+
+        "CREATE TABLE elementos_guarani (
+            id_elemento INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            codigo_elemento VARCHAR(50),
+            nombre VARCHAR(300),
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );",
+
+        "CREATE TABLE estudiantes_guarani (
+            id_estudiante INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            estudiantes INT,
+            id_comision INT REFERENCES comisiones_guarani(id_comision) ON DELETE CASCADE,
+            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+        );"
+    ];
+
+    foreach ($createSQL as $index => $sql) {
+        $conn_tkn->exec($sql);
+        echo "   - Tabla {$tables[count($tables) - 1 - $index]} creada exitosamente\n";
+    }
+
+    // Confirmar
+    $conn_tkn->commit();
+
+    echo "\n✅ Todas las tablas creadas exitosamente\n\n";
+    echo "\n🎉 Proceso completado exitosamente!\n";
+
+} catch (Exception $e) {
+    if ($conn_tkn->inTransaction()) {
+        $conn_tkn->rollBack();
+    }
     echo "\n❌ Error: " . $e->getMessage() . "\n";
-    if (strpos($e->getMessage(), 'already exists') !== false) {
-        echo "ℹ️ La tabla o partición ya existe en la base de datos.\n";
-    }
 }
 
 echo "\nProceso completado.\n";
+
+    echo "Fin del paso 1...\n";
 ?>

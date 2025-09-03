@@ -25,7 +25,7 @@ $dsn = "pgsql:host={$config_tinkuy_nuevo['host']};port={$config_tinkuy_nuevo['po
 $config_mapuche = [
     'host'     => 'localhost',
     'port'     => '5432',
-    'dbname'   => 'mapuche',
+    'dbname'   => 'siu',
     'user'     => 'postgres',
     'password' => '13082019'
 ]; 
@@ -36,27 +36,25 @@ $dsn = "pgsql:host={$config_mapuche['host']};port={$config_mapuche['port']};dbna
 // Establecer conexión
     $conn_m = new PDO($dsn, $config_mapuche['user'], $config_mapuche['password']);
     $conn_m->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $conn_m->exec("SET search_path TO mapuche, public;");
+
 
 
 
 // Configuración de la conexión a la base de datos Wichi (solo para consulta)
-//$config_wichi = [
-//    'host'     => '172.16.1.61',
-//    'port'     => '5432',
-//    'dbname'   => 'siu_wichi',
-//    'user'     => 'postgres',
-//    'password' => 'postgres',
-//    'esquemas' => [
-//        'principal' => 'mapuche',  // Para este script
-//        'default'   => 'public'    // Para otros scripts
-//    ]
-//];
+$config_guarani3 = [
+    'host'     => 'localhost',
+    'port'     => '5432',
+    'dbname'   => 'guarani3',
+    'user'     => 'postgres',
+    'password' => '13082019',
+];
 
-//$conn_wichi = new PDO(
-//        "pgsql:host={$config_wichi['host']};port={$config_wichi['port']};dbname={$config_wichi['dbname']}",
-//        $config_wichi['user'],
-//        $config_wichi['password']
-//    );
+$conn_guarani3 = new PDO(
+        "pgsql:host={$config_guarani3['host']};port={$config_guarani3['port']};dbname={$config_guarani3['dbname']}",
+        $config_guarani3['user'],
+        $config_guarani3['password']
+    );
 
 
 

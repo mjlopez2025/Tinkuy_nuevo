@@ -18,16 +18,23 @@ try {
     // 2. Consulta SQL (la misma que tenías)
     echo "⚙️ Ejecutando consulta SQL en mapuche...\n";
     $consulta_sql = "
-    SELECT DISTINCT ON (d03.nro_legaj, d03.nro_cargo)
+        SELECT DISTINCT ON (d03.nro_legaj, d03.nro_cargo)
         d03.nro_legaj, 
         d01.desc_appat, 
         d01.desc_nombr, 
         CONCAT(TRIM(d01.desc_appat), ', ', TRIM(d01.desc_nombr)) AS apellidonombre_desc,
         d01.tipo_docum,
         d01.nro_docum,
+        d01.nro_cuil1,
+        d01.nro_cuil,
+        d01.nro_cuil2,
+        CONCAT((d01.nro_cuil1), '-', (d01.nro_cuil), '-', (d01.nro_cuil2)) AS nro_cuil,
+        dha1.telefono_celular,           
+        dha1.correo_electronico,           
         dhr2.codc_dedic,           
         dh31.desc_dedic,           
         d03.nro_cargo,
+        dh04.desc_cargo,
         d03.codc_categ,
         d61.desc_categ,  
         d03.codc_carac,
@@ -46,9 +53,11 @@ try {
         d03.nro_norma
     FROM mapuche.dh03 d03
     INNER JOIN mapuche.dh01 d01 ON d01.nro_legaj = d03.nro_legaj
+    left join mapuche.dha1 dha1 on dha1.nro_persona = d01.nro_legaj
     LEFT JOIN mapuche.dhr2 dhr2 ON dhr2.nro_docum = d01.nro_docum   
     LEFT JOIN mapuche.dh31 dh31 ON dh31.codc_dedic = dhr2.codc_dedic    
     LEFT JOIN mapuche.dh05 d05 ON d05.nro_legaj = d03.nro_legaj
+    LEFT JOIN mapuche.dh04 dh04 ON dh04.nro_legaj = d03.nro_legaj
     LEFT JOIN mapuche.dh36 d36 ON d36.coddependesemp = d03.coddependesemp
     LEFT JOIN mapuche.dh61 d61 ON d61.codc_categ = d03.codc_categ
     LEFT JOIN mapuche.dh35 d35 ON d35.codc_carac = d03.codc_carac  
@@ -97,8 +106,8 @@ try {
     // 6. Preparar statements para inserción
     $stmtPersona = $conn_tkn->prepare("
         INSERT INTO personas_mapuche 
-        (apellido_nombre, tipo_documento, nro_documento, nro_legajo, fecha_alta, fecha_baja)
-        VALUES (?, ?, ?, ?, ?, ?) RETURNING id_persona
+        (apellido_nombre, tipo_documento, nro_documento, nro_legajo, nro_cuil, telefono_celular, correo_electronico, fecha_alta, fecha_baja)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id_persona
     ");
 
     $stmtUnidad = $conn_tkn->prepare("
@@ -127,8 +136,8 @@ try {
     ");
 
     $stmtCargo = $conn_tkn->prepare("
-        INSERT INTO cargo_mapuche (id_persona, nro_cargo)
-        VALUES (?, ?)
+        INSERT INTO cargo_mapuche (id_persona, nro_cargo, desc_cargo)
+        VALUES (?, ?, ?)
     ");
 
     $stmtCaracter = $conn_tkn->prepare("
@@ -158,6 +167,9 @@ try {
                 $row['tipo_docum'] ?? null,
                 $row['nro_docum'] ?? null,
                 $nro_legaj,
+                $row['nro_cuil'] ?? null,
+                $row['telefono_celular'] ?? null,
+                $row['correo_electronico'] ?? null,
                 $row['fec_alta'] ?? null,
                 $row['fec_baja'] ?? null
             ]);
@@ -218,10 +230,11 @@ try {
         }
 
         // Cargo
-        if (!empty($row['nro_cargo'])) {
+        if (!empty($row['nro_cargo']) || !empty($row['desc_cargo'])) {
             $stmtCargo->execute([
                 $id_persona, 
-                $row['nro_cargo'] ?? null
+                $row['nro_cargo'] ?? null, 
+                $row['desc_cargo'] ?? null
             ]);
         }
 
