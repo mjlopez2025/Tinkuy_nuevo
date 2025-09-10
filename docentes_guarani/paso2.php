@@ -53,8 +53,21 @@ try {
     echo "👨‍🏫 Total de docentes: " . number_format($totales['total_docentes']) . "\n";
     echo "📅 Rango de años: {$totales['año_minimo']} - {$totales['año_maximo']}\n\n";
     
-    // ===== CONSULTA PRINCIPAL =====
-    $sql_query = "SELECT
+    // ===== CONSULTA PRINCIPAL CON APROBADOS =====
+    $sql_query = "
+    WITH aprobados_por_materia AS (
+        SELECT
+            me.elemento,
+            EXTRACT(YEAR FROM a.fecha_generacion) AS anio_aprobacion,
+            COUNT(DISTINCT sad.alumno) AS cant_aprobados
+        FROM negocio.sga_actas_detalle sad
+        JOIN negocio.sga_actas a ON sad.id_acta = a.id_acta
+        JOIN negocio.sga_llamados_mesa lm ON a.llamado_mesa = lm.llamado_mesa
+        JOIN negocio.sga_mesas_examen me ON lm.mesa_examen = me.mesa_examen
+        WHERE sad.resultado = 'A'
+        GROUP BY me.elemento, EXTRACT(YEAR FROM a.fecha_generacion)
+    )
+    SELECT
         sra.nombre as responsabilidad_academica,
         sra.codigo as codigo_responsabilidad,
         sp2.nombre as Propuesta,
@@ -64,7 +77,7 @@ try {
         p.nombre AS periodo,
         se.nombre as actividad,
         se.codigo as codigo_actividad,
-        COUNT(DISTINCT sic.alumno) AS estudiantes,
+        COALESCE(ap.cant_aprobados, 0) AS estudiantes_aprobados,
         mpd.nro_documento as numero_doc
     FROM negocio.sga_comisiones c
     JOIN negocio.sga_periodos_lectivos pl 
@@ -73,6 +86,9 @@ try {
         ON p.periodo = pl.periodo
     JOIN negocio.sga_elementos se 
         ON c.elemento = se.elemento
+    LEFT JOIN aprobados_por_materia ap 
+        ON se.elemento = ap.elemento 
+        AND EXTRACT(YEAR FROM pl.fecha_inicio_dictado) = ap.anio_aprobacion
     JOIN negocio.sga_elementos_plan sep 
         ON se.elemento = sep.elemento_plan
     JOIN negocio.sga_planes sp 
@@ -91,12 +107,12 @@ try {
         ON sd.docente = sdr.docente
     JOIN negocio.sga_responsables_academicas sra 
         ON sdr.responsable_academica = sra.responsable_academica
-    JOIN negocio.sga_insc_cursada sic
-        ON c.comision = sic.comision
-    WHERE EXTRACT(YEAR FROM pl.fecha_inicio_dictado) BETWEEN 2012 AND EXTRACT(YEAR FROM CURRENT_DATE)
+    WHERE 
+        EXTRACT(YEAR FROM pl.fecha_inicio_dictado) BETWEEN 2012 AND EXTRACT(YEAR FROM CURRENT_DATE)
+        AND COALESCE(ap.cant_aprobados, 0) > 0
     GROUP BY
         sra.nombre,
-        sra.responsable_academica,
+        sra.codigo,
         sp2.nombre,
         sp2.propuesta,
         c.nombre,
@@ -104,7 +120,8 @@ try {
         p.nombre,
         se.nombre,
         se.codigo,
-        mpd.nro_documento
+        mpd.nro_documento,
+        ap.cant_aprobados
     ORDER BY 
         responsabilidad_academica,
         Propuesta,
@@ -112,7 +129,8 @@ try {
         anio_academico,
         periodo,
         actividad,
-        codigo_actividad";
+        codigo_actividad;
+    ";
     
     // ===== EJECUTAR CONSULTA =====
     echo "Ejecutando consulta completa...\n";
@@ -123,61 +141,60 @@ try {
     $totalRegistros = count($resultados);
     echo "✅ Registros obtenidos: " . number_format($totalRegistros) . "\n";
 
-   // ===== CONSULTAS PREPARADAS =====
-echo "\n🔧 Preparando consultas de inserción...\n";
+    // ===== CONSULTAS PREPARADAS =====
+    echo "\n🔧 Preparando consultas de inserción...\n";
 
-// 1. DEPARTAMENTOS
-$sql_departamento = "INSERT INTO departamentos_guarani (codigo_departamentos, nombre_departamentos) 
-                    VALUES (:codigo, :nombre) 
-                    ON CONFLICT (codigo_departamentos) DO NOTHING
-                    RETURNING id_departamentos";
+    // 1. DEPARTAMENTOS
+    $sql_departamento = "INSERT INTO departamentos_guarani (codigo_departamentos, nombre_departamentos) 
+                        VALUES (:codigo, :nombre) 
+                        ON CONFLICT (codigo_departamentos) DO NOTHING
+                        RETURNING id_departamentos";
 
-// 2. PROPUESTAS
-$sql_propuesta = "INSERT INTO propuestas_guarani (cod_prop, nombre_prop, id_departamentos, id_persona) 
-                 VALUES (:cod_prop, :nombre_prop, :id_departamentos, :id_persona) 
-                 RETURNING id_propuesta";
+    // 2. PROPUESTAS
+    $sql_propuesta = "INSERT INTO propuestas_guarani (cod_prop, nombre_prop, id_departamentos, id_persona) 
+                        VALUES (:cod_prop, :nombre_prop, :id_departamentos, :id_persona) 
+                        RETURNING id_propuesta";
 
-// 3. AÑOS
-$sql_anio = "INSERT INTO anios_guarani (anio_academico, id_persona) 
-            VALUES (:anio_academico, :id_persona) 
-            RETURNING id_anio";
+    // 3. AÑOS
+    $sql_anio = "INSERT INTO anios_guarani (anio_academico, id_persona) 
+                VALUES (:anio_academico, :id_persona) 
+                RETURNING id_anio";
 
-// 4. PERIODOS
-$sql_periodo = "INSERT INTO periodos_guarani (nombre, id_anio, id_persona) 
-               VALUES (:nombre, :id_anio, :id_persona) 
-               RETURNING id_periodo";
+    // 4. PERIODOS
+    $sql_periodo = "INSERT INTO periodos_guarani (nombre, id_anio, id_persona) 
+                    VALUES (:nombre, :id_anio, :id_persona) 
+                    RETURNING id_periodo";
 
-// 5. ELEMENTOS
-$sql_elemento = "INSERT INTO elementos_guarani (codigo_elemento, nombre, id_propuesta, id_persona) 
-                VALUES (:codigo, :nombre, :id_propuesta, :id_persona) 
-                RETURNING id_elemento";
+    // 5. ELEMENTOS
+    $sql_elemento = "INSERT INTO elementos_guarani (codigo_elemento, nombre, id_propuesta, id_persona) 
+                    VALUES (:codigo, :nombre, :id_propuesta, :id_persona) 
+                    RETURNING id_elemento";
 
-// 6. COMISIONES
-$sql_comision = "INSERT INTO comisiones_guarani (nombre, id_periodo, id_elemento, id_persona) 
-                VALUES (:nombre, :id_periodo, :id_elemento, :id_persona) 
-                RETURNING id_comision";
+    // 6. COMISIONES
+    $sql_comision = "INSERT INTO comisiones_guarani (nombre, id_periodo, id_elemento, id_persona) 
+                    VALUES (:nombre, :id_periodo, :id_elemento, :id_persona) 
+                    RETURNING id_comision";
 
-// 7. ESTUDIANTES
-$sql_estudiantes = "INSERT INTO estudiantes_guarani (estudiantes, id_comision, id_persona) 
-                   VALUES (:estudiantes, :id_comision, :id_persona)";
+    // 7. ESTUDIANTES
+    $sql_estudiantes = "INSERT INTO estudiantes_guarani (estudiantes, id_comision, id_persona) 
+                        VALUES (:estudiantes, :id_comision, :id_persona)";
 
-// Preparar statements
-$stmt_departamento = $conn_tkn->prepare($sql_departamento);
-$stmt_propuesta    = $conn_tkn->prepare($sql_propuesta);
-$stmt_anio         = $conn_tkn->prepare($sql_anio);
-$stmt_periodo      = $conn_tkn->prepare($sql_periodo);
-$stmt_elemento     = $conn_tkn->prepare($sql_elemento);
-$stmt_comision     = $conn_tkn->prepare($sql_comision);
-$stmt_estudiantes  = $conn_tkn->prepare($sql_estudiantes);
+    // Preparar statements
+    $stmt_departamento = $conn_tkn->prepare($sql_departamento);
+    $stmt_propuesta    = $conn_tkn->prepare($sql_propuesta);
+    $stmt_anio         = $conn_tkn->prepare($sql_anio);
+    $stmt_periodo      = $conn_tkn->prepare($sql_periodo);
+    $stmt_elemento     = $conn_tkn->prepare($sql_elemento);
+    $stmt_comision     = $conn_tkn->prepare($sql_comision);
+    $stmt_estudiantes  = $conn_tkn->prepare($sql_estudiantes);
 
-// Cache
-$cache_departamentos = [];
-$cache_propuestas = [];
-$cache_anios = [];
-$cache_periodos = [];
-$cache_elementos = [];
-$cache_comisiones = [];
-
+    // Cache
+    $cache_departamentos = [];
+    $cache_propuestas = [];
+    $cache_anios = [];
+    $cache_periodos = [];
+    $cache_elementos = [];
+    $cache_comisiones = [];
 
     // Función para buscar persona
     function obtenerIdPersona($nro_documento, $conn_tkn) {
@@ -209,7 +226,7 @@ $cache_comisiones = [];
         $periodo                   = trim($fila['periodo'] ?? '');
         $actividad                 = trim($fila['actividad'] ?? '');
         $codigo_actividad          = trim($fila['codigo_actividad'] ?? '');
-        $estudiantes               = (int)($fila['estudiantes'] ?? 0);
+        $estudiantes_aprobados     = (int)($fila['estudiantes_aprobados'] ?? 0);
         $nro_documento             = trim($fila['numero_doc'] ?? '');
 
         if (empty($nro_documento)) {
@@ -225,24 +242,24 @@ $cache_comisiones = [];
 
         try {
             // ===== 1. DEPARTAMENTO =====
-$cache_key_dep = $codigo_responsabilidad; // ahora el ID de la tabla de origen
-if (!isset($cache_departamentos[$cache_key_dep])) {
-    $stmt_departamento->bindValue(':codigo', $codigo_responsabilidad ?: 'SIN_ID'); // GUARDA EL ID DE ORIGEN
-    $stmt_departamento->bindValue(':nombre', $responsabilidad_academica ?: 'Sin departamento');
-    $stmt_departamento->execute();
-    $result = $stmt_departamento->fetch(PDO::FETCH_ASSOC);
-    $id_departamentos = $result ? $result['id_departamentos'] : null;
-    if ($id_departamentos) {
-        $cache_departamentos[$cache_key_dep] = $id_departamentos;
-        echo "\n✅ Departamento insertado: $responsabilidad_academica";
-    }
-} else {
-    $id_departamentos = $cache_departamentos[$cache_key_dep];
-}
+            $cache_key_dep = $codigo_responsabilidad;
+            if (!isset($cache_departamentos[$cache_key_dep])) {
+                $stmt_departamento->bindValue(':codigo', $codigo_responsabilidad ?: 'SIN_ID');
+                $stmt_departamento->bindValue(':nombre', $responsabilidad_academica ?: 'Sin departamento');
+                $stmt_departamento->execute();
+                $result = $stmt_departamento->fetch(PDO::FETCH_ASSOC);
+                $id_departamentos = $result ? $result['id_departamentos'] : null;
+                if ($id_departamentos) {
+                    $cache_departamentos[$cache_key_dep] = $id_departamentos;
+                    echo "\n✅ Departamento insertado: $responsabilidad_academica";
+                }
+            } else {
+                $id_departamentos = $cache_departamentos[$cache_key_dep];
+            }
 
             // ===== 2. PROPUESTA =====
-                $cache_key_prop = $codigo_propuesta . '_' . $id_departamentos;
-                if (!isset($cache_propuestas[$cache_key_prop]) && $id_departamentos) {
+            $cache_key_prop = $codigo_propuesta . '_' . $id_departamentos;
+            if (!isset($cache_propuestas[$cache_key_prop]) && $id_departamentos) {
                 $stmt_propuesta->bindValue(':cod_prop', $codigo_propuesta ?: 'SIN_CODIGO');
                 $stmt_propuesta->bindValue(':nombre_prop', $Propuesta ?: 'Sin propuesta');
                 $stmt_propuesta->bindValue(':id_departamentos', $id_departamentos, PDO::PARAM_INT);
@@ -312,13 +329,13 @@ if (!isset($cache_departamentos[$cache_key_dep])) {
                 $id_comision = $cache_comisiones[$cache_key_comision] ?? null;
             }
 
-            // ===== 7. ESTUDIANTES =====
-            if ($id_comision) {
-                $stmt_estudiantes->bindValue(':estudiantes', $estudiantes, PDO::PARAM_INT);
+            // ===== 7. ESTUDIANTES APROBADOS =====
+            if ($id_comision && $estudiantes_aprobados > 0) {
+                $stmt_estudiantes->bindValue(':estudiantes', $estudiantes_aprobados, PDO::PARAM_INT);
                 $stmt_estudiantes->bindValue(':id_comision', $id_comision, PDO::PARAM_INT);
                 $stmt_estudiantes->bindValue(':id_persona', $id_persona, PDO::PARAM_INT);
                 $stmt_estudiantes->execute();
-                echo "\n✅ Estudiantes insertados: $estudiantes";
+                echo "\n✅ Estudiantes aprobados insertados: $estudiantes_aprobados";
             }
 
         } catch (PDOException $e) {
@@ -346,3 +363,4 @@ if (!isset($cache_departamentos[$cache_key_dep])) {
 } catch (Exception $e) {
     echo "\n🚨 Error general: " . $e->getMessage();
 }
+?>
