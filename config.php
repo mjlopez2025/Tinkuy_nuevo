@@ -22,32 +22,32 @@ $dsn = "pgsql:host={$config_tinkuy_nuevo['host']};port={$config_tinkuy_nuevo['po
 
 
 //Configuración de conexión a Mapuche
-$config_mapuche = [
-    'host'     => 'localhost',
-    'port'     => '5432',
-    'dbname'   => 'siu',
-    'user'     => 'postgres',
-    'password' => '13082019'
-]; 
-
-// Crear string de conexión DSN
-$dsn = "pgsql:host={$config_mapuche['host']};port={$config_mapuche['port']};dbname={$config_mapuche['dbname']}";
-
-// Establecer conexión
-    $conn_m = new PDO($dsn, $config_mapuche['user'], $config_mapuche['password']);
-    $conn_m->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $conn_m->exec("SET search_path TO mapuche, public;");
+//$config_mapuche = [
+//    'host'     => 'localhost',
+//    'port'     => '5432',
+//    'dbname'   => 'siu',
+//    'user'     => 'postgres',
+//    'password' => '13082019'
+//]; 
+//
+//// Crear string de conexión DSN
+//$dsn = "pgsql:host={$config_mapuche['host']};port={$config_mapuche['port']};dbname={$config_mapuche['dbname']}";
+//
+//// Establecer conexión
+//    $conn_m = new PDO($dsn, $config_mapuche['user'], $config_mapuche['password']);
+//    $conn_m->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+//    $conn_m->exec("SET search_path TO mapuche, public;");
 
 
 
 
 // Configuración de la conexión a la base de datos Wichi (solo para consulta)
 $config_guarani3 = [
-    'host'     => 'localhost',
+    'host'     => '172.16.1.51',
     'port'     => '5432',
     'dbname'   => 'guarani3',
-    'user'     => 'postgres',
-    'password' => '13082019',
+    'user'     => 'wichilectura',
+    'password' => 'wichilectura',
 ];
 
 $conn_guarani3 = new PDO(

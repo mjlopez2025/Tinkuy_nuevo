@@ -2,7 +2,7 @@
 include ("../config.php");
 
 echo "=============================================\n";
-echo "SCRIPT PARA CREAR TABLAS GUARANI\n";
+echo "SCRIPT PARA CREAR TABLAS GUARANI (VERSION CORREGIDA)\n";
 echo "=============================================\n";
 echo "\nIniciando procesamiento....\n";
 
@@ -24,7 +24,8 @@ try {
         "periodos_guarani",
         "anios_guarani",
         "comisiones_guarani",
-        "propuestas_guarani"
+        "propuestas_guarani",
+        "departamentos_guarani"
     ];
 
     echo "🗑️ Eliminando tablas existentes (en cascada)...\n";
@@ -41,59 +42,76 @@ try {
         throw new Exception("❌ La tabla personas_mapuche no existe en esta base de datos.");
     }
 
-    echo "\n⚙️ Creando tablas...\n";
+    echo "\n⚙️ Creando tablas con relaciones correctas...\n";
 
     $createSQL = [
-        "CREATE TABLE propuestas_guarani (
-            id_propuesta INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            cod_prop VARCHAR(20),
-            nombre_prop VARCHAR(100),
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );",
+    // 1. TABLA DE DEPARTAMENTOS
+    "CREATE TABLE departamentos_guarani (
+        id_departamentos INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        codigo_departamentos VARCHAR(20) UNIQUE,  -- ← NUEVO: código del departamento
+        nombre_departamentos VARCHAR(100)
+    );",
 
-        "CREATE TABLE comisiones_guarani (
-            id_comision INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            nombre VARCHAR(100),
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );",
+    // 2. TABLA DE PROPUESTAS (relacionada solo con responsabilidad)
+    "CREATE TABLE propuestas_guarani (
+        id_propuesta INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        cod_prop VARCHAR(20),
+        nombre_prop VARCHAR(100),
+        id_departamentos INT REFERENCES departamentos_guarani(id_departamentos) ON DELETE CASCADE,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );",
 
-        "CREATE TABLE anios_guarani (
-            id_anio INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            anio_academico INT,
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );",
+    // 3. TABLA DE AÑOS ACADÉMICOS
+    "CREATE TABLE anios_guarani (
+        id_anio INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        anio_academico INT,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );",
 
-        "CREATE TABLE periodos_guarani (
-            id_periodo INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            nombre VARCHAR(100),
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );",
+    // 4. TABLA DE PERIODOS (relacionada con año)
+    "CREATE TABLE periodos_guarani (
+        id_periodo INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        nombre VARCHAR(100),
+        id_anio INT REFERENCES anios_guarani(id_anio) ON DELETE CASCADE,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );",
 
-        "CREATE TABLE elementos_guarani (
-            id_elemento INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            codigo_elemento VARCHAR(50),
-            nombre VARCHAR(300),
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );",
+    // 5. TABLA DE ELEMENTOS/MATERIAS (relacionada con propuesta)
+    "CREATE TABLE elementos_guarani (
+        id_elemento INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        codigo_elemento VARCHAR(50),
+        nombre VARCHAR(300),
+        id_propuesta INT REFERENCES propuestas_guarani(id_propuesta) ON DELETE CASCADE,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );",
 
-        "CREATE TABLE estudiantes_guarani (
-            id_estudiante INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            estudiantes INT,
-            id_comision INT REFERENCES comisiones_guarani(id_comision) ON DELETE CASCADE,
-            id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
-        );"
-    ];
+    // 6. TABLA DE COMISIONES (relacionada con periodo y elemento)
+    "CREATE TABLE comisiones_guarani (
+        id_comision INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        nombre VARCHAR(100),
+        id_periodo INT REFERENCES periodos_guarani(id_periodo) ON DELETE CASCADE,
+        id_elemento INT REFERENCES elementos_guarani(id_elemento) ON DELETE CASCADE,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );",
 
-    foreach ($createSQL as $index => $sql) {
+    // 7. TABLA DE ESTUDIANTES (relacionada con comisión)
+    "CREATE TABLE estudiantes_guarani (
+        id_estudiante INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        estudiantes INT,
+        id_comision INT REFERENCES comisiones_guarani(id_comision) ON DELETE CASCADE,
+        id_persona INT REFERENCES personas_mapuche(id_persona) ON DELETE CASCADE
+    );"
+];
+
+    foreach ($createSQL as $sql) {
         $conn_tkn->exec($sql);
-        echo "   - Tabla {$tables[count($tables) - 1 - $index]} creada exitosamente\n";
+        echo "   - Tabla creada exitosamente\n";
     }
 
     // Confirmar
     $conn_tkn->commit();
 
-    echo "\n✅ Todas las tablas creadas exitosamente\n\n";
-    echo "\n🎉 Proceso completado exitosamente!\n";
+    echo "\n✅ Todas las tablas creadas con relaciones correctas\n\n";
 
 } catch (Exception $e) {
     if ($conn_tkn->inTransaction()) {
@@ -103,6 +121,5 @@ try {
 }
 
 echo "\nProceso completado.\n";
-
-    echo "Fin del paso 1...\n";
+echo "Fin del paso 1...\n";
 ?>
